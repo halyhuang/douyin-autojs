@@ -51,20 +51,42 @@ message.sendMessage = function (text1) {
 
 // 监听新消息
 message.noticeMessage = function () {
-    var varNotify = id("ega").findOne(1000);
-    if (varNotify) {
-        varNotify.parent().parent().parent().parent().click();
-        sleep(1000);
-        var allMessage = id("df3").find();
-        if (allMessage && allMessage.size() > 0) {
-            var lastMsg = allMessage.get(allMessage.size() - 1).text();
+    try {
+        // 1. 确保在消息页面
+        if(!text("消息").exists()) {
+            message.goToMessagePage();
+        }
+        
+        // 2. 多种方式尝试定位消息
+        var lastMsg = null;
+        // 方法1：通过文本内容定位
+        var msgElements = textMatches(/.+/).find();
+        if(msgElements && msgElements.length > 0) {
+            lastMsg = msgElements[msgElements.length - 1].text();
+            log("方法1找到消息：" + lastMsg);
+        }
+        
+        // 方法2：通过类名定位
+        if(!lastMsg) {
+            var msgList = className("android.widget.TextView").find();
+            if(msgList && msgList.length > 0) {
+                lastMsg = msgList[msgList.length - 1].text();
+                log("方法2找到消息：" + lastMsg);
+            }
+        }
+        
+        if(lastMsg) {
+            log("检测到新消息内容：" + lastMsg);
             return {
                 type: "message",
                 content: lastMsg
             };
         }
+        return null;
+    } catch(e) {
+        log("noticeMessage错误：" + e);
+        return null;
     }
-    return null;
 };
 
 // 消息处理器
@@ -171,15 +193,45 @@ var checkList = {
     }
 };
 
-// 消息处理函数
+// 添加消息监听线程函数
+function startMessageListener() {
+    threads.start(function() {
+        log("启动消息监听线程");
+        while(true) {
+            try {
+                var msg = message.noticeMessage();
+                if(msg && msg.content) {
+                    log("检测到新消息：" + msg.content);
+                    if(msg.content.toLowerCase() === "ding") {
+                        log("收到ding消息，准备处理");
+                        handleMessage(JSON.stringify({
+                            type: "receive_message",
+                            content: "ding"
+                        }));
+                    }
+                }
+            } catch(e) {
+                log("消息监听线程错误：" + e);
+            }
+            sleep(1000);
+        }
+    });
+}
+
+// 修改消息处理函数，添加更多日志
 function handleMessage(info) {
     try {
+        log("开始处理消息：" + info);
         var data = JSON.parse(info);
+        log("消息类型：" + data.type);
+        log("消息内容：" + data.content);
         
         switch(data.type) {
             case "receive_message":
                 if(data.content === "ding") {
+                    log("准备发送dong响应");
                     message.sendMessage("dong");
+                    log("dong响应已发送");
                     return JSON.stringify({
                         type: "message_sent",
                         status: "success",
@@ -188,7 +240,9 @@ function handleMessage(info) {
                 }
                 break;
             case "send_message":
+                log("准备发送消息：" + data.content);
                 var result = message.sendMessage(data.content);
+                log("消息发送结果：" + (result ? "成功" : "失败"));
                 return JSON.stringify({
                     type: "message_sent",
                     status: result ? "success" : "failed",
@@ -252,7 +306,7 @@ function handleLogin() {
     }
 }
 
-// 主程序
+// 修改主程序，添加消息监听
 function main() {
     auto.waitFor();
     console.show();
@@ -265,14 +319,16 @@ function main() {
     // 清理之前可能存在的脚本
     engines.all().forEach(function(engine) {
         if(engine.id !== engines.myEngine().id) {
-            // 停止其他正在运行的脚本
             engine.forceStop();
         }
     });
     
+    // 启动消息监听线程
+    startMessageListener();
+    log("消息监听线程已启动");
+    
     var serversocket = null;
     try {
-        // 尝试不同的端口
         var ports = [3000, 3001, 3002, 3003, 3004];
         var connected = false;
         
@@ -309,7 +365,7 @@ function main() {
                     log("收到客户端信息：" + temp);
                     var response = handleMessage(temp);
                     log("发送响应：" + response);
-                    printWriter.print(response);
+                    printWriter.println(response);  // 修改为println确保消息完整发送
                     printWriter.flush();
                 }
                 sleep(200);
@@ -321,7 +377,6 @@ function main() {
     } catch(e) {
         log("服务器错误：" + e);
     } finally {
-        // 确保资源被正确释放
         try {
             if (serversocket != null && !serversocket.isClosed()) {
                 serversocket.close();
