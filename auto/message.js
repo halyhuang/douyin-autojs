@@ -36,70 +36,142 @@ message.findNameByHistoryList = function (name){
 
 //发消息
 message.sendMessage = function (text1){
-    text("发送消息…").findOne().setText(text1)
-    console.log("ok")
-    sleep(1000)
-    console.log("点击发送")
-    click(665,1241)
+    var inputBox = text("发送消息…").findOne()
+    if (inputBox) {
+        inputBox.setText(text1)
+        sleep(1000)
+        // 尝试找到发送按钮
+        var sendBtn = text("发送").findOne(1000)
+        if (sendBtn) {
+            sendBtn.click()
+        } else {
+            click(665,1241)  // 注意：这里最好改用控件点击
+        }
+        return true
+    }
+    return false
 }
 
-
-
-// //根据发消息人发来的消息提醒进入
-// message.noticeMessage = function () {
-//     let varNotify = null
-//     while (varNotify == null) {
-//       varNotify = id("ega").findOne(1000)
-//     }
-//     varNotify.parent().parent().parent().parent().parent().click()
-//     sleep(1000)
-//     //找到所有消息然后倒叙
-//     console.show()
-//     var allMessage = id("df3").find()
-//     // for(i = 0;i<allMessage.size();i++){
-//     //   console.log(allMessage.get(i).text())
-//     // }
-//     var allMessageNum = allMessage.size()
-//     console.log(allMessage.get(allMessageNum - 1).text())
-
-//     var messagePayload = {
-//       fromUserName: 'bot',
-//       toUserName:"UserName",
-//       msgId:"123",
-//       content:allMessage.get(allMessageNum - 1).text()
-//     }
-//     var strMessagePayload = JSON.stringify(messagePayload)
-//     return strMessagePayload
-//   }
-
-
-  //根据发消息人发来的消息提醒进入
-  message.noticeMessage = function () {
-  let varNotify = null
-  while (varNotify == null) {
-    varNotify = id("ega").findOne(1000)
-  }
-  varNotify.parent().parent().parent().parent().click()
-  sleep(1000)
-  //找到所有消息然后倒叙
-  console.show()
-  var allMessage = id("df3").find()
-  // for(i = 0;i<allMessage.size();i++){
-  //   console.log(allMessage.get(i).text())
-  // }
-  var allMessageNum = allMessage.size()
-  console.log(allMessage.get(allMessageNum - 1).text())
-
-  var messagePayload = {
-    fromUserName: 'bot',
-    toUserName:'UserName',
-    msgId:'1234',
-    content:allMessage.get(allMessageNum - 1).text()
-  }
-
-  var strmessagePayload = JSON.stringify(messagePayload)
-  return strmessagePayload
+//根据发消息人发来的消息提醒进入
+message.noticeMessage = function () {
+    var varNotify = id("ega").findOne(1000)
+    if (varNotify) {
+        varNotify.parent().parent().parent().parent().click()
+        sleep(1000)
+        //找到所有消息然后倒叙
+        console.show()
+        var allMessage = id("df3").find()
+        if (allMessage && allMessage.size() > 0) {
+            var lastMsg = allMessage.get(allMessage.size() - 1).text()
+            return {
+                type: "message",
+                content: lastMsg
+            }
+        }
+    }
+    return null
 }
 
+// 测试服务
+message.startServices = function() {
+    try {
+        // 启动服务
+        this.goToMessagePage();
+        log("消息页面已打开");
+        return true;
+    } catch (e) {
+        log("服务启动失败:" + e);
+        return false;
+    }
+};
 
+// 测试消息发送
+message.testMessageFlow = function() {
+    // 测试用例
+    var testCases = [
+        { input: "ding", expected: "dong" },
+        { input: "hello", expected: "你好！" },
+        { input: "random", expected: "ding Please" }
+    ];
+    
+    for (var i = 0; i < testCases.length; i++) {
+        try {
+            var test = testCases[i];
+            var result = this.sendMessage(test.input);
+            log("测试: " + test.input);
+            log("期望: " + test.expected);
+            log("实际: " + result);
+            sleep(1000);
+        } catch (e) {
+            log("测试失败: " + test.input + ", 错误: " + e);
+        }
+    }
+};
+
+// 消息队列处理
+var MessageQueue = function() {
+    this.queue = [];
+    this.processing = false;
+};
+
+MessageQueue.prototype.add = function(message) {
+    this.queue.push(message);
+    if (!this.processing) {
+        this.process();
+    }
+};
+
+MessageQueue.prototype.process = function() {
+    this.processing = true;
+    while (this.queue.length > 0) {
+        var msg = this.queue.shift();
+        message.sendMessage(msg);
+        sleep(1000);
+    }
+    this.processing = false;
+};
+
+// 状态管理
+var botState = {
+    isLoggedIn: false,
+    currentUser: null,
+    lastMessageTime: 0,
+    messageCount: 0,
+    
+    reset: function() {
+        this.isLoggedIn = false;
+        this.currentUser = null;
+        this.lastMessageTime = 0;
+        this.messageCount = 0;
+    }
+};
+
+// 导出模块
 module.exports = message
+
+// 运行前检查
+function checkEnvironment() {
+    auto.waitFor();
+    if (!auto.service) {
+        toast("请开启无障碍服务");
+        exit();
+    }
+    
+    if (!app.getPackageName("com.ss.android.ugc.aweme")) {
+        toast("请安装抖音");
+        exit();
+    }
+    
+    return true;
+}
+
+// 如果直接运行此文件，执行测试
+if (engines.myEngine().source.toString() === engines.myEngine().getSource()) {
+    console.show();
+    log("开始测试消息模块...");
+    
+    if (checkEnvironment()) {
+        message.startServices();
+        message.testMessageFlow();
+    }
+}
